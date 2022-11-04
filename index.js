@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 
@@ -18,12 +19,44 @@ const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@clu
 // console.log(uri);
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
 
+// jwt
+function verifyJWT(req, res, next){
+  // console.log(req.headers.authorization)
+  const authHeader = req.headers.authorization;
+
+  if(!authHeader)
+  {
+    return res.status(401).send({message: 'unauthorized access'});
+  }
+  const token = authHeader.split(' ')[1];
+
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function(err, decoded){
+    if(err)
+    {
+      return res.status(403).send({message: 'Forbidden access'});
+    }
+    req.decoded = decoded;
+    next();
+  })
+
+}
+
 async function run(){
 
     try{
      
          const serviceCollection = client.db('geniusCar').collection('services');
          const orderCollection = client.db('geniusCar').collection('orders');
+
+
+        //  jwt token ar jonno
+          app.post('/jwt', (req, res) =>{
+                const user = req.body;
+                // console.log(user);
+                // '1d' mani 1din.. age 1h dewa chilo...a time ar por token thake na tai error diya dei order a
+                const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1d'})
+                res.send({token})
+          })
          
         //  sob gula pete
         app.get('/services', async(req, res) =>{
@@ -44,7 +77,14 @@ async function run(){
         // orders api(data create)
 
         // sob gula pete
-         app.get('/orders', async(req, res) =>{
+         app.get('/orders', verifyJWT, async (req, res) => {
+            
+             const decoded = req.decoded;
+            //  console.log('inside orders api', decoded);
+             if(decoded.email !== req.query.email)
+             {
+                res.status(403).send({message: 'unauthorized access'})
+             }
             //  console.log(req.query.email);
              let query = {};
 
@@ -60,14 +100,14 @@ async function run(){
              res.send(orders);
          });
 
-         app.post('/orders', async(req, res) =>{
+         app.post('/orders', verifyJWT, async(req, res) =>{
                const order = req.body;
                const result = await orderCollection.insertOne(order);
                res.send(result);
          })
 
         //  update ar jonno
-         app.patch('/orders/:id', async(req, res) =>{
+         app.patch('/orders/:id', verifyJWT, async(req, res) =>{
                const id = req.params.id;
                const status = req.body.status;
                const query = { _id: ObjectId(id) }
@@ -81,7 +121,7 @@ async function run(){
          })
 
           //  delete ar jonno
-         app.delete('/orders/:id', async(req, res) =>{
+         app.delete('/orders/:id', verifyJWT, async(req, res) =>{
                  const id = req.params.id;
                  const query = { _id: ObjectId(id) };
                  const result = await orderCollection.deleteOne(query);
@@ -103,3 +143,5 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   console.log(`Genius car server running on ${port}`);
 })
+
+
